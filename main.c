@@ -19,6 +19,8 @@
 
 #include "master_server.h"
 
+#include "mysql_api.h"
+
 int servicePort = 50000;
 int dmrPort = 50001;
 int baseDmrPort = 50100;
