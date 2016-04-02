@@ -1,7 +1,7 @@
 #include "mysql_api.h"
 #include "master_server.h"
 
-struct repeater repeaterList[100] = {0};
+//struct repeater repeaterList[100] = {0};
 
 MYSQL *openDatabaseMySql()
 {
@@ -25,7 +25,7 @@ void closeDatabaseMySql(MYSQL *connection)
   mysql_close(connection);
 }
 
-my_bool isFieldExisting(MYSQL *connection, char *db, char *table, char *field)
+my_bool isFieldExistingMySql(MYSQL *connection, char *db, char *table, char *field)
 {
   char buffer[1024];
   char *queryFormat = "SELECT * FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s' AND COLUMN_NAME = '%s'";
@@ -50,7 +50,7 @@ my_bool isFieldExisting(MYSQL *connection, char *db, char *table, char *field)
   return count == 1;
 }
 
-my_bool isTableExisting(MYSQL *connection, char *db, char *table)
+my_bool isTableExistingMySql(MYSQL *connection, char *db, char *table)
 {
   char buffer[1024];
   char *queryFormat = "SELECT * FROM information_schema.tables WHERE TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s'";
@@ -409,7 +409,7 @@ int updateVoiceTraffic(MYSQL *connection, int senderId, char *senderCallsign, ch
   return executeCommand(connection, SQLQUERY);
 }
 
-void logTraffic(int srcId,int dstId,int slot,unsigned char serviceType[16],char *callType, unsigned char repeater[17])
+void logTrafficMySql(int srcId,int dstId,int slot,unsigned char serviceType[16],char *callType, unsigned char repeater[17])
 {
   MYSQL *connection = openDatabaseMySql();
 
@@ -443,7 +443,7 @@ void updateRepeaterStatus(int status, int reflector, int repPos)
 
 // TODO: rename it because it is used for update, delete, ...
 
-void updateRepeaterTable(MYSQL *connection, int status, int reflector, int repPos)
+void updateRepeaterTableMySql(MYSQL *connection, int status, int reflector, int repPos)
 {
   char SQLQUERY[256];
   int currentReflector = (status == 2) ? reflector : 0;
@@ -464,7 +464,7 @@ int updateRrs(MYSQL *connection, int radioId, char *callsign, char *name, char *
   return executeCommand(connection, SQLQUERY);
 }
 
-void decodeHyteraRrs(struct RepeaterEntity *repeater, unsigned char data[300])
+void decodeHyteraRrsMySql(struct RepeaterEntity *repeater, unsigned char data[300])
 {
   int srcId = data[8] << 16 | data[9] << 8 | data[10];
   struct CallsignEntity callsign;
@@ -494,7 +494,7 @@ void deleteRrs(MYSQL *connection, int radioId)
   executeCommand(connection, SQLQUERY);
 }
 
-void decodeHyteraOffRrs(struct RepeaterEntity *repeater, unsigned char data[300])
+void decodeHyteraOffRrsMySql(struct RepeaterEntity *repeater, unsigned char data[300])
 {
   int srcId = data[8] << 16 | data[9] << 8 | data[10];
   struct CallsignEntity callsign;

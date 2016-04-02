@@ -34,15 +34,15 @@ CmpOptions             := -g $(Preprocessors)
 LinkOptions            :=  
 IncludePath            :=  "$(IncludeSwitch)." "$(IncludeSwitch)." `mysql_config --cflags`
 RcIncludePath          :=
-Libs                   :=$(LibrarySwitch)pthread $(LibrarySwitch)sqlite3 $(LibrarySwitch)m
-LibPath                := "$(LibraryPathSwitch)." 
+Libs                   :=$(LibrarySwitch)pthread $(LibrarySwitch)sqlite3 $(LibrarySwitch)m -lmysqlclient -lpthread -lz -lm -lrt -ldl
+LibPath                := "$(LibraryPathSwitch)." "-L/usr/lib/i386-linux-gnu"
 
 
 ##
 ## User defined environment variables
 ##
 CodeLiteDir:=/usr/share/codelite
-Objects=$(IntermediateDirectory)/main$(ObjectSuffix) $(IntermediateDirectory)/dmr$(ObjectSuffix) $(IntermediateDirectory)/rdac$(ObjectSuffix) $(IntermediateDirectory)/smaster$(ObjectSuffix) $(IntermediateDirectory)/sqlite$(ObjectSuffix)  $(IntermediateDirectory)/convbin$(ObjectSuffix) $(IntermediateDirectory)/BPTC1969$(ObjectSuffix) $(IntermediateDirectory)/decode34Rate$(ObjectSuffix) $(IntermediateDirectory)/hyteraDecode$(ObjectSuffix) $(IntermediateDirectory)/aprs$(ObjectSuffix)  $(IntermediateDirectory)/scheduler$(ObjectSuffix)
+Objects=$(IntermediateDirectory)/main$(ObjectSuffix) $(IntermediateDirectory)/dmr$(ObjectSuffix) $(IntermediateDirectory)/rdac$(ObjectSuffix) $(IntermediateDirectory)/smaster$(ObjectSuffix) $(IntermediateDirectory)/sqlite$(ObjectSuffix)  $(IntermediateDirectory)/convbin$(ObjectSuffix) $(IntermediateDirectory)/BPTC1969$(ObjectSuffix) $(IntermediateDirectory)/decode34Rate$(ObjectSuffix) $(IntermediateDirectory)/hyteraDecode$(ObjectSuffix) $(IntermediateDirectory)/aprs$(ObjectSuffix)  $(IntermediateDirectory)/scheduler$(ObjectSuffix) $(IntermediateDirectory)/mysql_api$(ObjectSuffix)
 
 ##
 ## Main Build Targets 
@@ -151,6 +151,14 @@ $(IntermediateDirectory)/scheduler$(DependSuffix): scheduler.c
 $(IntermediateDirectory)/scheduler$(PreprocessSuffix): scheduler.c
 	@$(C_CompilerName) $(CmpOptions) $(IncludePath) $(PreprocessOnlySwitch) $(OutputSwitch) $(IntermediateDirectory)/scheduler$(PreprocessSuffix) "scheduler.c"
 
+$(IntermediateDirectory)/mysql_api$(ObjectSuffix): mysql_api.c $(IntermediateDirectory)/mysql_api$(DependSuffix)
+	$(C_CompilerName) $(SourceSwitch) "mysql_api.c" $(CmpOptions) $(ObjectSwitch)$(IntermediateDirectory)/mysql_api$(ObjectSuffix) $(IncludePath)
+$(IntermediateDirectory)/mysql_api$(DependSuffix): mysql_api.c
+	@$(C_CompilerName) $(CmpOptions) $(IncludePath) -MT$(IntermediateDirectory)/mysql_api$(ObjectSuffix) -MF$(IntermediateDirectory)/mysql_api$(DependSuffix) -MM "mysql_api.c"
+
+$(IntermediateDirectory)/mysql_api$(PreprocessSuffix): mysql_api.c
+	@$(C_CompilerName) $(CmpOptions) $(IncludePath) $(PreprocessOnlySwitch) $(OutputSwitch) $(IntermediateDirectory)/mysql_api$(PreprocessSuffix) "mysql_api.c"
+
 
 -include $(IntermediateDirectory)/*$(DependSuffix)
 ##
@@ -190,6 +198,10 @@ clean:
 	$(RM) $(IntermediateDirectory)/scheduler$(ObjectSuffix)
 	$(RM) $(IntermediateDirectory)/scheduler$(DependSuffix)
 	$(RM) $(IntermediateDirectory)/scheduler$(PreprocessSuffix)
+
+	$(RM) $(IntermediateDirectory)/mysql_api$(ObjectSuffix)
+	$(RM) $(IntermediateDirectory)/mysql_api$(DependSuffix)
+	$(RM) $(IntermediateDirectory)/mysql_api$(PreprocessSuffix)
 
 	$(RM) $(OutputFile)
 
