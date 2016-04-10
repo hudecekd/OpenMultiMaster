@@ -84,23 +84,18 @@ void sendAprs(struct gpsCoordinates gpsData, int radioId,int destId, struct repe
 	char SQLQUERY[200];
 	int sockfd;
 	struct CallsignEntity radioIdent = {0};
-	sqlite3 *dbase;
-	sqlite3_stmt *stmt;
 	unsigned char aprsCor[30];
 
         MYSQL *connection = openDatabaseMySql();
         getCallsign(connection, radioId, &radioIdent);
-        closeDatabaseMySql(connection);
-
 	if (time(NULL) - radioIdent.lastAprsTime < 5){
 		syslog(LOG_NOTICE,"[%s]Preventing aprs.fi flooding for %s",repeater.callsign,radioIdent.callsign);
-		closeDatabase(dbase);
+                closeDatabaseMySql(connection);
 		return;
 	}
 
-	sprintf(SQLQUERY,"UPDATE callsigns SET hasSendAprs = 1, lastAprsTime = %lu where radioId = %i",time(NULL),radioId);
-	sqlite3_exec(dbase,SQLQUERY,0,0,0);
-	closeDatabase(dbase);
+        updateCallsignsAprsTime(connection, radioId);
+        closeDatabaseMySql(connection);
 	sprintf(aprsCor,"%s/%s>%s/%s",gpsData.latitude,gpsData.longitude,gpsData.heading,gpsData.speed);
 	aprsCor[18] = radioIdent.aprsSymbol;
 

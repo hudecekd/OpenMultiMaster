@@ -301,7 +301,7 @@ int initDatabaseMySql(MYSQL *connection)
     return 1;
 }
 
-int updateCallsigns(MYSQL *connection, int radioId)
+int updateCallsignsAprsTime(MYSQL *connection, int radioId)
 {
   char SQLQUERY[256];
   sprintf(SQLQUERY,"UPDATE callsigns SET hasSendAprs = 1, lastAprsTime = %lu where radioId = %i",time(NULL),radioId);
