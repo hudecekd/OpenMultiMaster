@@ -87,8 +87,6 @@ void delRdacRepeater(struct sockaddr_in address){
 
 int setRdacRepeater(struct sockaddr_in address){
 	int i;
-	sqlite3_stmt *stmt;
-	char SQLQUERY[300];
 	char str[INET_ADDRSTRLEN];
 	
 	inet_ntop(AF_INET, &(address.sin_addr), str, INET_ADDRSTRLEN);
@@ -112,33 +110,18 @@ int setRdacRepeater(struct sockaddr_in address){
 	rdacList[i].address = address;
 	inet_ntop(AF_INET, &(address.sin_addr), str, INET_ADDRSTRLEN);
 	//See if there is already info in the database based on IP address
-	db = openDatabase();
-	sprintf(SQLQUERY,"SELECT repeaterId,callsign,txFreq,shift,hardware,firmware,mode,language,geoLocation,aprsPass,aprsBeacon,aprsPHG,autoReflector FROM repeaters WHERE ipAddress = '%s'",str);
-	if (sqlite3_prepare_v2(db,SQLQUERY,-1,&stmt,0) == 0){
-		if (sqlite3_step(stmt) == SQLITE_ROW){
-			rdacList[i].id = sqlite3_column_int(stmt,0);
-			sprintf(rdacList[i].callsign,"%s",sqlite3_column_text(stmt,1));
-			sprintf(rdacList[i].txFreq,"%s",sqlite3_column_text(stmt,2));
-			sprintf(rdacList[i].shift,"%s",sqlite3_column_text(stmt,3));
-			sprintf(rdacList[i].hardware,"%s",sqlite3_column_text(stmt,4));
-			sprintf(rdacList[i].firmware,"%s",sqlite3_column_text(stmt,5));
-			sprintf(rdacList[i].mode,"%s",sqlite3_column_text(stmt,6));
-			sprintf(rdacList[i].language,"%s",sqlite3_column_text(stmt,7));
-			sprintf(rdacList[i].geoLocation,"%s",sqlite3_column_text(stmt,8));
-			sprintf(rdacList[i].aprsPass,"%s",sqlite3_column_text(stmt,9));
-			sprintf(rdacList[i].aprsBeacon,"%s",sqlite3_column_text(stmt,10));
-			sprintf(rdacList[i].aprsPHG,"%s",sqlite3_column_text(stmt,11));
-			rdacList[i].autoReflector = sqlite3_column_int(stmt,12);
-			syslog(LOG_NOTICE,"Assigning %s %s %s %s %s %s %s to repeater on pos %i from database [%s]",rdacList[i].callsign,rdacList[i].hardware
-			,rdacList[i].firmware,rdacList[i].mode,rdacList[i].txFreq,rdacList[i].shift,rdacList[i].language,i,str);
-			sqlite3_finalize(stmt);
-			closeDatabase(db);
-			return i;
-		}
-	}
+        CONNECTION_TYPE connection = openDatabaseMySql();
+        int result = getRepeaterForIpAddress(connection, &(rdacList[i]), str);
+        if (result == 0)
+        {
+          syslog(LOG_NOTICE,"Assigning %s %s %s %s %s %s %s to repeater on pos %i from database [%s]",rdacList[i].callsign,rdacList[i].hardware,
+          rdacList[i].firmware,rdacList[i].mode,rdacList[i].txFreq,rdacList[i].shift,rdacList[i].language,i,str);
+          closeDatabaseMySql(connection);
+          return i;
+        }
 	inet_ntop(AF_INET, &(address.sin_addr), str, INET_ADDRSTRLEN);
 	syslog(LOG_NOTICE,"Repeater not found in database based on IP %s, assigning pos %i",str,i);
-	closeDatabase(db);
+        closeDatabaseMySql(connection);
 	return i;
 }
 
@@ -160,7 +143,7 @@ int findRdacRepeater(struct sockaddr_in address){
 }
 
 
-bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg,sqlite3 *dbase){
+bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg, CONNECTION_TYPE connection){
 	FILE *fp;
 	struct sockaddr_in cliaddr;
 	char *lineread;
@@ -184,8 +167,6 @@ bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg,sqlite3
 	char str[INET_ADDRSTRLEN];
 	socklen_t len;
 	size_t srclen,dstlen;
-	sqlite3_stmt *stmt;
-	char SQLQUERY[300];
 
 	inet_ntop(AF_INET, &(cliaddrOrg.sin_addr), str, INET_ADDRSTRLEN);
 	FD_ZERO(&master);
@@ -245,20 +226,16 @@ bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg,sqlite3
 						case 0:  //0 = repeaterId
 						rdacList[repPos].id = buffer[20] << 16 | buffer[19] << 8 | buffer[18];
 						syslog(LOG_NOTICE,"Assigning id %i to repeater on RDAC pos %i [%s]",rdacList[repPos].id,repPos,str);
-						sprintf(SQLQUERY,"SELECT repeaterId FROM repeaters WHERE repeaterId = %i",rdacList[repPos].id);
-						if (sqlite3_prepare_v2(dbase,SQLQUERY,-1,&stmt,0) == 0){
-							if (sqlite3_step(stmt) != SQLITE_ROW){
+                                                int exists;
+                                                if (existsRepeater(connection, &exists, rdacList[repPos].id))
+                                                {
 								syslog(LOG_NOTICE,"Repeater with id %i not known in database, removing from list pos %i [%s]",rdacList[repPos].id,repPos,str);
 								delRdacRepeater(cliaddrOrg);
 								fclose(fp);
 								syslog(LOG_NOTICE,"Setting repeater in discard list [%s]",str);
 								discard(cliaddrOrg);
 								close(sockfd);
-								sqlite3_finalize(stmt);
-								closeDatabase(dbase);
 								pthread_exit(NULL);
-							}
-							sqlite3_finalize(stmt);
 						}
 						break;
 						
@@ -324,30 +301,28 @@ bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg,sqlite3
 	}
 	syslog(LOG_NOTICE,"Updating from RDAC %s %s %s %s %s %s to repeater on pos %i [%s]",rdacList[repPos].callsign,rdacList[repPos].hardware
 	,rdacList[repPos].firmware,rdacList[repPos].mode,rdacList[repPos].txFreq,rdacList[repPos].shift,repPos,str);
-	sprintf(SQLQUERY,"SELECT count(*) FROM repeaters WHERE repeaterId = %i",rdacList[repPos].id);
+
 	time_t now = time(NULL);
 	struct tm *t = localtime(&now);
 	strftime(timeStamp,sizeof(timeStamp),"%Y-%m-%d %H:%M:%S",t);
-	if (sqlite3_prepare_v2(dbase,SQLQUERY,-1,&stmt,0) == 0){
-		if (sqlite3_step(stmt) == SQLITE_ROW){
-			sqlite3_finalize(stmt);
-			sprintf(SQLQUERY,"UPDATE repeaters SET callsign = '%s', txFreq = '%s', shift = '%s', hardware = '%s', firmware = '%s', mode = '%s', currentAddress = %lu, timeStamp = '%s', ipAddress = '%s'  WHERE repeaterId = %i",
+        struct repeater repeater;
+        int exists;
+        int successResult = existsRepeater(connection, &exists, rdacList[repPos].id);
+	if (successResult == 0){
+		if (exists){
+                  updateRepeater(connection,
 			rdacList[repPos].callsign,rdacList[repPos].txFreq,rdacList[repPos].shift,rdacList[repPos].hardware,rdacList[repPos].
 			firmware,rdacList[repPos].mode,(long)cliaddrOrg.sin_addr.s_addr,timeStamp,str,rdacList[repPos].id);
-			sqlite3_exec(dbase,SQLQUERY,0,0,0);
-			sprintf(SQLQUERY,"SELECT language,geoLocation,aprsPass,aprsBeacon,aprsPHG,autoReflector FROM repeaters WHERE repeaterId = %i",rdacList[repPos].id);
-			if (sqlite3_prepare_v2(dbase,SQLQUERY,-1,&stmt,0) == 0){
-                		if (sqlite3_step(stmt) == SQLITE_ROW){
-					sprintf(rdacList[repPos].language,"%s",sqlite3_column_text(stmt,0));
-					sprintf(rdacList[repPos].geoLocation,"%s",sqlite3_column_text(stmt,1));
-					sprintf(rdacList[repPos].aprsPass,"%s",sqlite3_column_text(stmt,2));
-					sprintf(rdacList[repPos].aprsBeacon,"%s",sqlite3_column_text(stmt,3));
-					sprintf(rdacList[repPos].aprsPHG,"%s",sqlite3_column_text(stmt,4));
-					rdacList[repPos].autoReflector = sqlite3_column_int(stmt,5);
-					sqlite3_finalize(stmt);
+                  successResult = getRepeaterForId(connection, &repeater, rdacList[repPos].id);
+                        if (successResult == 0) {
+					sprintf(rdacList[repPos].language,"%s",repeater.language);
+					sprintf(rdacList[repPos].geoLocation,"%s",repeater.geoLocation);
+					sprintf(rdacList[repPos].aprsPass,"%s",repeater.aprsPass);
+					sprintf(rdacList[repPos].aprsBeacon,"%s",repeater.aprsBeacon);
+					sprintf(rdacList[repPos].aprsPHG,"%s",repeater.aprsPHG);
+					rdacList[repPos].autoReflector = repeater.autoReflector;
 					syslog(LOG_NOTICE,"Setting repeater language to %s [%s]",rdacList[repPos].language,str);
-				}
-			}
+		  }
 		}
 		else{
 			syslog(LOG_NOTICE,"RDAC, no row, removing repeater from list [%s]",str);
@@ -355,10 +330,10 @@ bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg,sqlite3
 		}
 	}
 	else{
-		syslog(LOG_NOTICE,"RDAC, bad query, removing repeater from list [%s]",str);
+		syslog(LOG_NOTICE,"RDAC, bad query or another error when checking repeater existence. Removing repeater from list [%s]",str);
 		delRdacRepeater(cliaddrOrg);
 		close(sockfd);
-		closeDatabase(dbase);
+                closeDatabaseMySql(connection);
 		pthread_exit(NULL);
 	}
 	fclose(fp);
@@ -424,9 +399,9 @@ void *rdacListener(void* f){
 					else{
 						syslog(LOG_NOTICE,"Requesting RDAC info from repeater on port %i [%s]",port,str);
 					}
-					dbase = openDatabase();
-					getRepeaterInfo(sockfd,repPos,cliaddr,dbase);
-					closeDatabase(dbase);
+                                        CONNECTION_TYPE connection = openDatabaseMySql();
+					getRepeaterInfo(sockfd,repPos,cliaddr, connection);
+                                        closeDatabaseMySql(connection);
 				}
 			}
 		}

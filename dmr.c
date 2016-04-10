@@ -76,8 +76,6 @@ void decodeHyteraGpsTriggered();
 void decodeHyteraGpsCompressed();
 void decodeHyteraGpsButton();
 void decodeHyteraRrs();
-sqlite3 *openDatabase();
-void closeDatabase();
 
 struct allow checkTalkGroup(int dstId, int slot, int callType){
 	struct allow toSend = {0};
@@ -131,26 +129,6 @@ struct allow checkTalkGroup(int dstId, int slot, int callType){
 	return toSend;
 }
 
-void updateRepeaterTable(int status, int reflector, int repPos){
-
-	char SQLQUERY[400];
-	sqlite3 *dbase;
-	sqlite3_stmt *stmt;
-
-	if(status ==2){
-		sprintf(SQLQUERY,"UPDATE repeaters set currentReflector = %i where callsign = '%s'",reflector,repeaterList[repPos].callsign);
-	}
-	else{
-		sprintf(SQLQUERY,"UPDATE repeaters set currentReflector = 0 where callsign = '%s'",repeaterList[repPos].callsign);
-	}
-        dbase = openDatabase();
-	if (sqlite3_exec(dbase,SQLQUERY,0,0,0) != 0){
-                syslog(LOG_NOTICE,"Failed to update repeater table: %s",sqlite3_errmsg(dbase));
-                syslog(LOG_NOTICE,"QUERY: %s",SQLQUERY);
-        }
-        closeDatabase(dbase);
-}
-
 void reflectorStatus(int sockfd, struct sockaddr_in address,int status,int reflector, int repPos){
 
 	char fileName[100];
@@ -164,7 +142,7 @@ void reflectorStatus(int sockfd, struct sockaddr_in address,int status,int refle
 	else{
 	        sprintf(fileName,"disconnected.voice");
 	}
-	updateRepeaterTable(status,reflector,repPos);
+        updateRepeaterStatus(status,reflector,repPos);
 	sleep(1);
 	syslog(LOG_NOTICE,"[%s]Playing %s",repeaterList[repPos].callsign,fileName);
         if (file = fopen(fileName,"rb")){
@@ -259,55 +237,6 @@ void echoTest(unsigned char buffer[VFRAMESIZE],int sockfd, struct sockaddr_in ad
 	}
 }
 
-
-void logTraffic(int srcId,int dstId,int slot,unsigned char serviceType[16],int callType, unsigned char repeater[17]){
-        char SQLQUERY[400];
-        sqlite3 *dbase;
-        sqlite3_stmt *stmt;
-	unsigned char callsign[33] = "";
-	unsigned char name[33] = "";
-	unsigned char callGroup[16];
-
-	if (callType == 1) sprintf(callGroup ,"Group"); else sprintf(callGroup,"Private");
-        dbase = openDatabase();
-        sprintf(SQLQUERY,"SELECT callsign,name FROM callsigns WHERE radioId = %i",srcId);
-        if (sqlite3_prepare_v2(dbase,SQLQUERY,-1,&stmt,0) == 0){
-                if (sqlite3_step(stmt) == SQLITE_ROW){
-                        sprintf(callsign,"%s",sqlite3_column_text(stmt,0));
-                        sprintf(name,"%s",sqlite3_column_text(stmt,1));
-                        sqlite3_finalize(stmt);
-
-                }
-                else{
-                        sqlite3_finalize(stmt);
-                        closeDatabase(dbase);
-			syslog(LOG_NOTICE,"Failed to find DMR ID in table callsigns");
-                        return;
-                }
-        }
-        else{
-                closeDatabase(dbase);
-		syslog(LOG_NOTICE,"Failed to prepare SQL statement");
-                return;
-
-        }
-
-	sprintf(SQLQUERY,"REPLACE into traffic (senderId,senderCallsign,senderName,targetId,channel,serviceType,callType,timeStamp,onRepeater) VALUES (%i,'%s','%s',%i,%i,'%s','%s',%lu,'%s')",srcId,callsign,name,dstId,slot,serviceType,callGroup,time(NULL),repeater);
-        if (sqlite3_exec(dbase,SQLQUERY,0,0,0) != 0){
-                syslog(LOG_NOTICE,"Failed to update traffic table: %s",sqlite3_errmsg(dbase));
-		syslog(LOG_NOTICE,"QUERY: %s",SQLQUERY);
-        }
-	if(strcmp(serviceType,"Voice")== 0){
-		sprintf(SQLQUERY,"REPLACE into voiceTraffic (senderId,senderCallsign,senderName,targetId,channel,serviceType,callType,timeStamp,onRepeater) VALUES (%i,'%s','%s',%i,%i,'%s','%s',%lu,'%s')",srcId,callsign,name,dstId,slot,serviceType,callGroup,time(NULL),repeater);
-        	if (sqlite3_exec(dbase,SQLQUERY,0,0,0) != 0){
-                	syslog(LOG_NOTICE,"Failed to update voiceTraffic table: %s",sqlite3_errmsg(dbase));
-			syslog(LOG_NOTICE,"QUERY: %s",SQLQUERY);
-        	}
-	}
-        closeDatabase(dbase);
-
-}
-
 void *dmrListener(void *f){
 	int sockfd,n,i,rc,ii,l;
 	struct sockaddr_in servaddr,cliaddr;
@@ -382,7 +311,7 @@ void *dmrListener(void *f){
 
 	autoReconnectTimer = 0;
 	if(repeaterList[repPos].autoReflector != 0){
-		updateRepeaterTable(2,repeaterList[repPos].autoReflector,repPos);
+		updateRepeaterStatus(2,repeaterList[repPos].autoReflector,repPos);
 		syslog(LOG_NOTICE,"[%s]Adding repeater to conference %i by auto reflector",repeaterList[repPos].callsign,repeaterList[repPos].autoReflector);
 	}
 	for (;;){
@@ -759,7 +688,7 @@ void *dmrListener(void *f){
 			if (difftime(timeNow,pingTime) > 60 && !repeaterList[repPos].sending[slot]){
 				syslog(LOG_NOTICE,"PING timeout on DMR port %i repeater %s, exiting thread",baseDmrPort + repPos,repeaterList[repPos].callsign);
 				syslog(LOG_NOTICE,"Removing repeater from list position %i",repPos);
-				updateRepeaterTable(1,repeaterList[repPos].autoReflector,repPos);
+				updateRepeaterStatus(1,repeaterList[repPos].autoReflector,repPos);
 				delRepeater(cliaddrOrg);
 				if (repPos + 1 == highestRepeater) highestRepeater--;
 				delRdacRepeater(cliaddrOrg);

@@ -16,9 +16,22 @@
 
 #define DATABASE_NAME "DmrMaster"
 
+#define CONNECTION_TYPE MYSQL *
+#define ROW_TYPE MYSQL_ROW
+
+struct RepeaterEntity
+{
+  int repeaterId;
+  char callsign[10];
+};
+
 MYSQL *openDatabaseMySql();
 void closeDatabaseMySql(MYSQL *connection);
 int initDatabaseMySql(MYSQL *connection);
+
+int cleanRegistrations(CONNECTION_TYPE connection, long unixTime);
+int cleanTrafficData(CONNECTION_TYPE connection, long timeStamp);
+int cleanVoiceTrafficData(CONNECTION_TYPE connection, long timeStamp);
 
 #endif
 

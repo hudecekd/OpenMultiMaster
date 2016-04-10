@@ -22,7 +22,6 @@
 void sendAprsBeacon();
 sqlite3 *openDatabase();
 void closeDatabase();
-void updateRepeaterTable();
 
 void *scheduler(){
 	time_t timeNow,beaconTime=0;
@@ -49,6 +48,13 @@ void *scheduler(){
 		}
 		time(&timeNow);
 		//Cleanup registration database
+                CONNECTION_TYPE connection = openDatabaseMySql();
+                cleanRegistrations(connection, time(NULL));
+                cleanTrafficData(connection, time(NULL));
+                cleanVoiceTrafficData(connection, time(NULL));
+                closeDatabaseMySql(connection);
+
+                /*
 		dbase = openDatabase();
 		sprintf(SQLQUERY,"DELETE FROM rrs WHERE %lu-unixTime > 1900",time(NULL));
 		if (sqlite3_exec(dbase,SQLQUERY,0,0,0) != 0){
@@ -64,7 +70,8 @@ void *scheduler(){
 		if (sqlite3_exec(dbase,SQLQUERY,0,0,0) != 0){
 			syslog(LOG_NOTICE,"Failed to cleanup voiceTraffic database: %s",sqlite3_errmsg(dbase));
         }
-				
+        */
+
 		id = 0;
 		sprintf(SQLQUERY,"SELECT repeaterId,callsign,txFreq,shift,hardware,firmware,mode,language,geoLocation,aprsPass,aprsBeacon,aprsPHG,autoReflector FROM repeaters WHERE upDated = 1");
 		if (sqlite3_prepare_v2(dbase,SQLQUERY,-1,&stmt,0) == 0){

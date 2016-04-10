@@ -84,11 +84,13 @@ int executeCommand(MYSQL *connection, char *SQLQUERY)
   }
 
   my_ulonglong affectedRows = mysql_affected_rows(connection);
+  return 0; // no error
+  // TODO: maybe we need to return affected rows too
 }
 
 
 
-void initMasterTable(MYSQL *connection)
+int initMasterTable(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -116,14 +118,14 @@ CREATE TABLE master\
   if (isTableExisting(connection, DATABASE_NAME, "master"))
   {
     syslog(LOG_NOTICE, "master already exists");
-    return;
+    return 1;
   }
 
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
 
-void initSMasterTable(MYSQL *connection)
+int initSMasterTable(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -139,14 +141,14 @@ CREATE TABLE sMaster\
   if (isTableExisting(connection, DATABASE_NAME, "sMaster"))
   {
     syslog(LOG_NOTICE, "sMaster already exists");
-    return;
+    return 1;
   }
 
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
 
-void initRepeatersTable(MYSQL *connection)
+int initRepeatersTable(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -173,10 +175,10 @@ CREATE TABLE repeaters\
 )";
 
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
 
-void initCallsignsTable(MYSQL *connection)
+int initCallsignsTable(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -203,10 +205,10 @@ CREATE TABLE callsigns\
     remarks VARCHAR(32) default ''\
 )";
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
 
-void initRrsTable(MYSQL *connection)
+int initRrsTable(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -221,10 +223,10 @@ CREATE TABLE rrs\
     unixTime long default 0\
 )";
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
 
-void initTrafficTable(MYSQL *connection)
+int initTrafficTable(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -242,9 +244,10 @@ CREATE TABLE traffic\
     senderName varchar(32) default ''\
 )";
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
-void initVoiceTraffic(MYSQL *connection)
+
+int initVoiceTraffic(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -262,10 +265,10 @@ CREATE TABLE voiceTraffic\
     senderName varchar(32) default ''\
 )";
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
 
-void initLocalReflectors(MYSQL *connection)
+int initLocalReflectors(MYSQL *connection)
 {
   char SQLQUERY[1000];
   char *format = "\
@@ -275,19 +278,27 @@ CREATE TABLE localReflectors\
     name varchar(50)\
 )";
   sprintf(SQLQUERY, format);
-  executeCommand(connection, SQLQUERY);
+  return executeCommand(connection, SQLQUERY);
 }
 
 int initDatabaseMySql(MYSQL *connection)
 {
-  initCallsignsTable(connection);
-  initMasterTable(connection);
-  initSMasterTable(connection);
-  initRepeatersTable(connection);
-  initRrsTable(connection);
-  initTrafficTable(connection);
-  initVoiceTraffic(connection);
-  initLocalReflectors(connection);
+  if (initCallsignsTable(connection))
+    return 1;
+  if (initMasterTable(connection))
+    return 1;
+  if (initSMasterTable(connection))
+    return 1;
+  if (initRepeatersTable(connection))
+    return 1;
+  if (initRrsTable(connection))
+    return 1;
+  if (initTrafficTable(connection))
+    return 1;
+  if (initVoiceTraffic(connection))
+    return 1;
+  if (initLocalReflectors(connection))
+    return 1;
 }
 
 int updateCallsigns(MYSQL *connection, int radioId)
@@ -296,35 +307,6 @@ int updateCallsigns(MYSQL *connection, int radioId)
   sprintf(SQLQUERY,"UPDATE callsigns SET hasSendAprs = 1, lastAprsTime = %lu where radioId = %i",time(NULL),radioId);
   return mysql_query(connection, SQLQUERY);
 }
-
-struct CallsignEntity
-{
-  int radioId;
-  char callsign[32];
-  char name[32];
-  char aprsSuffix[3];
-  char aprsBeacon[100];
-  int aprsSymbol;
-  int hasSendAprs;
-  int messageStore;
-  char email[100];
-  char login[50];
-  char password[50];
-  int lastAprsTime;
-  int madeChange;
-  char city[32];
-  char state[32];
-  char country[32];
-  char radio[32];
-  char homeRepeaterId[32];
-  char remarks[32];
-};
-
-struct RepeaterEntity
-{
-  int repeaterId;
-  char callsign[10];
-};
 
 int getCallsign(MYSQL *connection, int radioId, struct CallsignEntity *callsign)
 {
@@ -409,7 +391,7 @@ int updateVoiceTraffic(MYSQL *connection, int senderId, char *senderCallsign, ch
   return executeCommand(connection, SQLQUERY);
 }
 
-void logTrafficMySql(int srcId,int dstId,int slot,unsigned char serviceType[16],char *callType, unsigned char repeater[17])
+void logTraffic(int srcId,int dstId,int slot,unsigned char serviceType[16],char *callType, unsigned char repeater[17])
 {
   MYSQL *connection = openDatabaseMySql();
 
@@ -423,8 +405,7 @@ void logTrafficMySql(int srcId,int dstId,int slot,unsigned char serviceType[16],
 
     if (strcmp(serviceType, "Voice") == 0)
     {
-      // TODO: volam to same znovu proc?
-      updateTraffic(connection, srcId, callsign.callsign, callsign.name, dstId, slot, serviceType, callType, /*time(NULL), */ repeater);
+      updateVoiceTraffic(connection, srcId, callsign.callsign, callsign.name, dstId, slot, serviceType, callType, /*time(NULL), */ repeater);
     }
   }
 
@@ -464,7 +445,7 @@ int updateRrs(MYSQL *connection, int radioId, char *callsign, char *name, char *
   return executeCommand(connection, SQLQUERY);
 }
 
-void decodeHyteraRrsMySql(struct RepeaterEntity *repeater, unsigned char data[300])
+void decodeHyteraRrsMySql(struct repeater repeater, unsigned char data[300])
 {
   int srcId = data[8] << 16 | data[9] << 8 | data[10];
   struct CallsignEntity callsign;
@@ -480,7 +461,9 @@ void decodeHyteraRrsMySql(struct RepeaterEntity *repeater, unsigned char data[30
 
     updateRrs(connection,
         srcId, callsign.callsign, callsign.name, timeStamp,
-        repeater->callsign, now);
+        repeater.callsign, now);
+
+    syslog(LOG_NOTICE,"[%s]Hytera RADIO REGISTER from %i %s",repeater.callsign,srcId,callsign);
   }
 
   closeDatabase(connection);
@@ -494,7 +477,7 @@ void deleteRrs(MYSQL *connection, int radioId)
   executeCommand(connection, SQLQUERY);
 }
 
-void decodeHyteraOffRrsMySql(struct RepeaterEntity *repeater, unsigned char data[300])
+void decodeHyteraOffRrsMySql(struct repeater repeater, unsigned char data[300])
 {
   int srcId = data[8] << 16 | data[9] << 8 | data[10];
   struct CallsignEntity callsign;
@@ -509,6 +492,7 @@ void decodeHyteraOffRrsMySql(struct RepeaterEntity *repeater, unsigned char data
     deleteRrs(connection, srcId);
   }
 
+  syslog(LOG_NOTICE,"[%s]Hytera RADIO OFFLINE from %i %s",repeater.callsign,srcId,callsign);
   closeDatabase(connection);
 }
 
@@ -517,4 +501,194 @@ int getRepeater(MYSQL *connection, struct RepeaterEntity *repeater)
 {
   char SQLQUERY[256];
   //sprintf(SQLQUERY,"SELECT repeaterId FROM repeaters WHERE repeaterId = %i",repeaterList[repPos].id);
+}
+
+int cleanRegistrations(CONNECTION_TYPE connection, long unixTime)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"DELETE FROM rrs WHERE %lu-unixTime > 1900",unixTime);
+  return executeCommand(connection, SQLQUERY);
+}
+
+int cleanTrafficData(CONNECTION_TYPE connection, long timeStamp)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"DELETE FROM traffic WHERE %lu-timeStamp > 86400",timeStamp);
+  return executeCommand(connection, SQLQUERY);
+}
+
+int cleanVoiceTrafficData(CONNECTION_TYPE connection, long timeStamp)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"DELETE FROM voiceTraffic WHERE %lu-timeStamp > 86400",timeStamp);
+  return executeCommand(connection, SQLQUERY);
+}
+
+const char *getRowText(MYSQL_ROW row, int columnIndex)
+{
+  return row[columnIndex];
+}
+
+int getRowInteger(MYSQL_ROW row, int columnIndex)
+{
+  return atoi(row[columnIndex]);
+}
+
+/*
+ * Check SQLITE implementation. Weird selection and for loop used!!!
+ */
+int updateRepeaterList(CONNECTION_TYPE connection)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT repeaterId,callsign,txFreq,shift,hardware,firmware,mode,language,geoLocation,aprsPass,aprsBeacon,aprsPHG,autoReflector FROM repeaters WHERE upDated = 1");
+  executeCommand(connection, SQLQUERY);
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  MYSQL_ROW row = mysql_fetch_row(result);
+  struct repeater *repeater;
+
+  int id = atoi(row[0]);
+  
+  int i;
+  for(i=0;i<highestRepeater;i++)
+  {
+    if(repeaterList[i].id == id && repeaterList[i].dmrOnline)
+    {
+      sprintf(repeater->callsign,"%s", row[1]);
+      sprintf(repeater->txFreq,"%s", row[2]);
+      sprintf(repeater->shift,"%s",row[3]);
+      sprintf(repeater->hardware,"%s",row[4]);
+      sprintf(repeater->firmware,"%s",row[5]);
+      sprintf(repeater->mode,"%s",row[6]);
+      sprintf(repeater->language,"%s",row[7]);
+      sprintf(repeater->geoLocation,"%s",row[8]);
+      sprintf(repeater->aprsPass,"%s",row[9]);
+      sprintf(repeater->aprsBeacon,"%s",row[10]);
+      sprintf(repeater->aprsPHG,"%s",row[11]);
+      repeater->autoReflector = atoi(row[12]);
+						
+      syslog(LOG_NOTICE,"Repeater data changed from web %s %s %s %s %s %s %s %s %s %s %s %i on pos %i",repeater->callsign, repeater->hardware, repeater->firmware,
+          repeater->mode, repeater->txFreq, repeater->shift, repeater->language,
+          repeater->geoLocation, repeater->aprsPass, repeater->aprsBeacon,
+          repeater->aprsPHG, repeater->autoReflector, i);
+      
+      repeaterList[i].conference[2] = repeaterList[i].autoReflector;
+
+      if (repeaterList[i].pearRepeater[2] != 0)
+      {
+        repeaterList[i].pearRepeater[2] = 0;
+        repeaterList[repeaterList[i].pearPos[2]].pearRepeater[2] = 0;
+      }
+    }
+  }
+}
+
+int getRepeaterForIpAddress(CONNECTION_TYPE connection, struct repeater *repeater, char *ipAddress)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT repeaterId,callsign,txFreq,shift,hardware,firmware,mode,language,geoLocation,aprsPass,aprsBeacon,aprsPHG,autoReflector FROM repeaters WHERE ipAddress = '%s'", ipAddress);
+  int retValue = executeCommand(connection, SQLQUERY);
+  if (retValue)
+    return retValue;
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    return 1;
+  };
+  MYSQL_ROW row = mysql_fetch_row(result);
+  if (row == NULL) // error or no rows
+  {
+    return 1;
+  };
+
+  repeater->id = atoi(row[0]);
+  sprintf(repeater->callsign,"%s", row[1]);
+  sprintf(repeater->txFreq,"%s", row[2]);
+  sprintf(repeater->shift,"%s",row[3]);
+  sprintf(repeater->hardware,"%s",row[4]);
+  sprintf(repeater->firmware,"%s",row[5]);
+  sprintf(repeater->mode,"%s",row[6]);
+  sprintf(repeater->language,"%s",row[7]);
+  sprintf(repeater->geoLocation,"%s",row[8]);
+  sprintf(repeater->aprsPass,"%s",row[9]);
+  sprintf(repeater->aprsBeacon,"%s",row[10]);
+  sprintf(repeater->aprsPHG,"%s",row[11]);
+  repeater->autoReflector = atoi(row[12]);
+  return 0;
+}
+
+int getRepeaterForId(CONNECTION_TYPE connection, struct repeater *repeater, int repeaterId)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT repeaterId,callsign,txFreq,shift,hardware,firmware,mode,language,geoLocation,aprsPass,aprsBeacon,aprsPHG,autoReflector FROM repeaters WHERE repeaterId = '%i'", repeaterId);
+  int retValue = executeCommand(connection, SQLQUERY);
+  if (retValue)
+    return retValue;
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    return 1;
+  };
+  MYSQL_ROW row = mysql_fetch_row(result);
+  if (row == NULL) // error or no rows
+  {
+    return 1;
+  };
+
+  repeater->id = atoi(row[0]);
+  sprintf(repeater->callsign,"%s", row[1]);
+  sprintf(repeater->txFreq,"%s", row[2]);
+  sprintf(repeater->shift,"%s",row[3]);
+  sprintf(repeater->hardware,"%s",row[4]);
+  sprintf(repeater->firmware,"%s",row[5]);
+  sprintf(repeater->mode,"%s",row[6]);
+  sprintf(repeater->language,"%s",row[7]);
+  sprintf(repeater->geoLocation,"%s",row[8]);
+  sprintf(repeater->aprsPass,"%s",row[9]);
+  sprintf(repeater->aprsBeacon,"%s",row[10]);
+  sprintf(repeater->aprsPHG,"%s",row[11]);
+  repeater->autoReflector = atoi(row[12]);
+  return 0;
+}
+
+
+int existsRepeater(CONNECTION_TYPE connection, int *pExists, int id)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT repeaterId FROM repeaters WHERE repeaterId = %i", id);
+  int retValue = executeCommand(connection, SQLQUERY);
+  if (retValue)
+    return retValue;
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    return 1;
+  };
+  MYSQL_ROW row = mysql_fetch_row(result);
+  if (row == NULL) // error or no rows
+  {
+    unsigned int error = mysql_errno(connection);
+    if (error == 0) // no row
+    {
+      *pExists = 0;
+      return 0;
+    };
+
+    return 1;
+  };
+
+  *pExists = 1;
+  return 0;
+}
+int updateRepeater(CONNECTION_TYPE connection,
+    char *callsign, char *txFreq, char *shift, char *hardware,
+    char *firmware, char *mode, long currentAddress,
+    char *timeStamp, char *ipAddress, int repeaterId)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"UPDATE repeaters SET callsign = '%s', txFreq = '%s', shift = '%s', hardware = '%s', firmware = '%s', mode = '%s', currentAddress = %lu, timeStamp = '%s', ipAddress = '%s'  WHERE repeaterId = %i");
+  executeCommand(connection, SQLQUERY);
 }

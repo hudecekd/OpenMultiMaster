@@ -17,9 +17,9 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#include "mysql_api.h"
+
 #include "master_server.h"
-sqlite3 *openDatabase();
-void closeDatabase();
 
 char aprsUrl[100];
 char aprsPort[7];
@@ -83,37 +83,16 @@ void sendAprs(struct gpsCoordinates gpsData, int radioId,int destId, struct repe
 	char timeString[7];
 	char SQLQUERY[200];
 	int sockfd;
-	struct idInfo radioIdent = {0};
+	struct CallsignEntity radioIdent = {0};
 	sqlite3 *dbase;
 	sqlite3_stmt *stmt;
 	unsigned char aprsCor[30];
 
-	dbase = openDatabase();
-	sprintf(SQLQUERY,"SELECT callsign,aprsSuffix,aprsBeacon,aprsSymbol,lastAprsTime FROM callsigns WHERE radioId = %i",radioId);
-	if (sqlite3_prepare_v2(dbase,SQLQUERY,-1,&stmt,0) == 0){
-		if (sqlite3_step(stmt) == SQLITE_ROW){
-			sprintf(radioIdent.callsign,"%s",sqlite3_column_text(stmt,0));
-			sprintf(radioIdent.aprsSuffix,"%s",sqlite3_column_text(stmt,1));
-			sprintf(radioIdent.aprsBeacon,"%s",sqlite3_column_text(stmt,2));
-			radioIdent.aprsSymbol = sqlite3_column_int(stmt,3);
-			radioIdent.aprsTimeStamp = sqlite3_column_int(stmt,4);
-			sqlite3_finalize(stmt);
+        MYSQL *connection = openDatabaseMySql();
+        getCallsign(connection, radioId, &radioIdent);
+        closeDatabaseMySql(connection);
 
-		}
-		else{
-			sqlite3_finalize(stmt);
-			syslog(LOG_NOTICE,"[%s]DMR ID %i not found in database, not sending to aprs.fi",repeater.callsign,radioId);
-			closeDatabase(dbase);
-			return;
-		}
-	}
-	else{
-		syslog(LOG_NOTICE,"[%s]Bad query %s",repeater.callsign,SQLQUERY);
-		closeDatabase(dbase);
-		return;
-	}
-	
-	if (time(NULL) - radioIdent.aprsTimeStamp < 5){
+	if (time(NULL) - radioIdent.lastAprsTime < 5){
 		syslog(LOG_NOTICE,"[%s]Preventing aprs.fi flooding for %s",repeater.callsign,radioIdent.callsign);
 		closeDatabase(dbase);
 		return;

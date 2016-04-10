@@ -38,6 +38,8 @@
 #include <math.h>
 #include <regex.h>
 
+#include "mysql_api.h"
+
 struct repeater{
 	struct sockaddr_in address;
 	int sockfd;
@@ -69,17 +71,29 @@ struct repeater{
 	int upDated;
 };
 
-
-struct idInfo{
-        int radioId;
-        char callsign[32];
-        char name[32];
-        long aprsTimeStamp;
-        char aprsSuffix[4];
-        char aprsBeacon[100];
-        int aprsSymbol;
-        int messageStore;
+struct CallsignEntity
+{
+  int radioId;
+  char callsign[32];
+  char name[32];
+  char aprsSuffix[3];
+  char aprsBeacon[100];
+  int aprsSymbol;
+  int hasSendAprs;
+  int messageStore;
+  char email[100];
+  char login[50];
+  char password[50];
+  int lastAprsTime;
+  int madeChange;
+  char city[32];
+  char state[32];
+  char country[32];
+  char radio[32];
+  char homeRepeaterId[32];
+  char remarks[32];
 };
+
 
 struct masterData{
 	struct sockaddr_in address;

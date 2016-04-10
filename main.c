@@ -47,7 +47,6 @@ int numReflectors = 0;
 sqlite3 *db;
 sqlite3 *openDatabase();
 void closeDatabase();
-int initDatabase();
 
 int setRdacRepeater();
 int findRdacRepeater();
@@ -663,17 +662,17 @@ int main(int argc, char**argv)
 	int port;
 	int dbInit;
 	int i;
+
+        CONNECTION_TYPE connection = openDatabaseMySql();
+        int creationFailed = initDatabaseMySql(connection);
+        closeDatabaseMySql(connection);
+
+        if (creationFailed)
+        {
+          syslog(LOG_NOTICE, "Failed to init database");
+          return 0;
+        }
 	
-	db = openDatabase();
-	
-	//Init and create sqlite database if needed
-	dbInit = initDatabase(db);
-	if (dbInit == 0){
-		syslog(LOG_NOTICE,"Failed to init database");
-		closeDatabase(db);
-		return 0;
-	}
-	closeDatabase(db);
 	//Start scheduler thread
 	pthread_create(&thread, NULL, scheduler,NULL);
 
