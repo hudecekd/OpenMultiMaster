@@ -364,58 +364,28 @@ int getMasterInfo(){
 	sqlite3_stmt *stmt;
 	
 	db = openDatabase();
-	sprintf(SQLQUERY,"SELECT ownName,ownCountryCode,ownRegion,sMasterIp,sMasterPort FROM sMaster");
-	if (sqlite3_prepare_v2(db,SQLQUERY,-1,&stmt,0) == 0){
-		if (sqlite3_step(stmt) == SQLITE_ROW){
-			sprintf(master.ownName,"%s",sqlite3_column_text(stmt,0));
-			sprintf(master.ownCountryCode,"%s",sqlite3_column_text(stmt,1));
-			sprintf(master.ownRegion,"%s",sqlite3_column_text(stmt,2));
-			sprintf(master.sMasterIp,"%s",sqlite3_column_text(stmt,3));
-			sprintf(master.sMasterPort,"%s",sqlite3_column_text(stmt,4));
-			master.ownCCInt = atoi(sqlite3_column_text(stmt,1));
-			master.ownRegionInt = atoi(sqlite3_column_text(stmt,2));
-		}
-		else{
-			syslog(LOG_NOTICE,"failed to read sMasterInfo, no row");
-			sqlite3_finalize(stmt);
-			closeDatabase(db);
-			return 0;
-		}
-	}
-	else{
-		syslog(LOG_NOTICE,"failed to read sMasterInfo, query bad");
-		closeDatabase(db);
-		return 0;
+        CONNECTION_TYPE connection = openDatabaseMySql();
+        int returnValue = getMasterInfoMySql(connection, &master);
+        if (returnValue != 0)
+        {
+          syslog(LOG_NOTICE,"failed to read sMasterInfo");
+	  sqlite3_finalize(stmt);
+	  closeDatabase(db);
+          closeDatabaseMySql(connection);
+	  return 0;
 	}
 	sqlite3_finalize(stmt);
     syslog(LOG_NOTICE,"sMaster info: ownName %s, ownCountryCode %s, ownRegion %s, sMasterIp %s, sMasterPort %s",
 	master.ownName,master.ownCountryCode,master.ownRegion,master.sMasterIp,master.sMasterPort);
+
+        returnValue = getMasterMySql(connection, &servicePort, &rdacPort, &dmrPort, &baseDmrPort, &maxRepeaters, &echoId, &rrsGpsId, &aprsUrl, &aprsPort, &echoSlot);
 	
 	sprintf(SQLQUERY,"SELECT servicePort, rdacPort, dmrPort, baseDmrPort, maxRepeaters, echoId,rrsGpsId,aprsUrl,aprsPort,echoSlot FROM master");
-	if (sqlite3_prepare_v2(db,SQLQUERY,-1,&stmt,0) == 0){
-		if (sqlite3_step(stmt) == SQLITE_ROW){
-			servicePort = sqlite3_column_int(stmt,0);
-			rdacPort = sqlite3_column_int(stmt,1);
-			dmrPort = sqlite3_column_int(stmt,2);
-			baseDmrPort = sqlite3_column_int(stmt,3);
-			maxRepeaters = sqlite3_column_int(stmt,4) + 1;
-			echoId = sqlite3_column_int(stmt,5);
-			rrsGpsId = sqlite3_column_int(stmt,6);
-			sprintf(aprsUrl,"%s",sqlite3_column_text(stmt,7));
-			sprintf(aprsPort,"%s",sqlite3_column_text(stmt,8));
-			echoSlot = sqlite3_column_int(stmt,9);
-
-		}
-		else{
-			syslog(LOG_NOTICE,"failed to read masterInfo, no row");
-			sqlite3_finalize(stmt);
-			closeDatabase(db);
-			return 0;
-		}
-	}
-	else{
-		syslog(LOG_NOTICE,"failed to read masterInfo, query bad");
+        if (returnValue != 0)
+        {
+		syslog(LOG_NOTICE,"failed to read masterInfo");
 		closeDatabase(db);
+                closeDatabaseMySql(connection);
 		return 0;
 	}
 	syslog(LOG_NOTICE,"ServicePort %i rdacPort %i dmrPort %i baseDmrPort %i baseRdacPort %i maxRepeaters %i echoId %i echoSlot %i rrsGpsId %i",
@@ -683,6 +653,7 @@ int main(int argc, char**argv)
 	//Load the allowed talkgroups
 	if(!loadTalkGroups()) return 0;
 	getLocalReflectors();
+        getLocalReflectorsMySql(localReflectors, &numReflectors);
 	//Start sMaster Thread
 	pthread_create(&thread, NULL, sMasterThread,NULL);
 	//Start listening on the service port

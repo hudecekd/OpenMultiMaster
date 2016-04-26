@@ -81,7 +81,6 @@ void sendAprsBeacon(char callsign[10],char pass[6],char loc[20],char phg[7],char
 void sendAprs(struct gpsCoordinates gpsData, int radioId,int destId, struct repeater repeater){
 	char toSend[300];
 	char timeString[7];
-	char SQLQUERY[200];
 	int sockfd;
 	struct CallsignEntity radioIdent = {0};
 	unsigned char aprsCor[30];

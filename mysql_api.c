@@ -581,6 +581,12 @@ int updateRepeaterList(CONNECTION_TYPE connection)
       }
     }
   }
+
+  if (id != 0) // repeater was found => we can update it
+  {
+    sprintf(SQLQUERY,"UPDATE repeaters SET upDated = 0");
+    executeCommand(connection, SQLQUERY);
+  };
 }
 
 int getRepeaterForIpAddress(CONNECTION_TYPE connection, struct repeater *repeater, char *ipAddress)
@@ -683,6 +689,7 @@ int existsRepeater(CONNECTION_TYPE connection, int *pExists, int id)
   *pExists = 1;
   return 0;
 }
+
 int updateRepeater(CONNECTION_TYPE connection,
     char *callsign, char *txFreq, char *shift, char *hardware,
     char *firmware, char *mode, long currentAddress,
@@ -692,3 +699,100 @@ int updateRepeater(CONNECTION_TYPE connection,
   sprintf(SQLQUERY,"UPDATE repeaters SET callsign = '%s', txFreq = '%s', shift = '%s', hardware = '%s', firmware = '%s', mode = '%s', currentAddress = %lu, timeStamp = '%s', ipAddress = '%s'  WHERE repeaterId = %i");
   executeCommand(connection, SQLQUERY);
 }
+
+int getMasterInfoMySql(CONNECTION_TYPE connection, struct masterInfo *master)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT ownName,ownCountryCode,ownRegion,sMasterIp,sMasterPort FROM sMaster");
+  int retValue = executeCommand(connection, SQLQUERY);
+  if (retValue)
+    return retValue;
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    return 1;
+  };
+  MYSQL_ROW row = mysql_fetch_row(result);
+  if (row == NULL) // error or no rows
+  {
+    return 1;
+  };
+
+  sprintf(master->ownName,"%s",row[0]);
+  sprintf(master->ownCountryCode,"%s", row[1]);
+  sprintf(master->ownRegion,"%s", row[2]);
+  sprintf(master->sMasterIp,"%s", row[3]);
+  sprintf(master->sMasterPort,"%s", row[4]);
+  master->ownCCInt = atoi(row[1]);
+  master->ownRegionInt = atoi(row[2]);
+
+  return 0;
+}
+
+int getMasterMySql(CONNECTION_TYPE connection, int *servicePort, int *rdacPort, int *dmrPort, int *baseDmrPort, int *maxRepeaters,
+    int *echoId, int *rrsGpsId, char *aprsUrl, char *aprsPort, int *echoSlot)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT servicePort, rdacPort, dmrPort, baseDmrPort, maxRepeaters, echoId,rrsGpsId,aprsUrl,aprsPort,echoSlot FROM master");
+  int retValue = executeCommand(connection, SQLQUERY);
+  if (retValue)
+    return retValue;
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    return 1;
+  };
+  MYSQL_ROW row = mysql_fetch_row(result);
+  if (row == NULL) // error or no rows
+  {
+    return 1;
+  };
+
+  *servicePort = atoi(row[0]);
+  *rdacPort = atoi(row[1]);
+  *dmrPort = atoi(row[2]);
+  *baseDmrPort = atoi(row[3]);
+  *maxRepeaters = atoi(row[4]);
+  *echoId = atoi(row[5]);
+  *rrsGpsId = atoi(row[6]);
+  sprintf(aprsUrl,"%s",row[7]);
+  sprintf(aprsPort,"%s",row[8]);
+  *echoSlot = atoi(row[9]);
+
+  return 0;
+}
+
+int getLocalReflectorsMySql(struct reflector *reflectors, int *count)
+{
+  CONNECTION_TYPE connection = openDatabaseMySql();
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT id,name FROM localReflectors");
+  
+  int retValue = executeCommand(connection, SQLQUERY);
+  if (retValue)
+    return retValue;
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    return 1;
+  };
+
+  MYSQL_ROW row;
+  int i = 0;
+  while ((row = mysql_fetch_row(result))) 
+  { 
+    reflectors[i].id = atoi(row[0]);
+    sprintf(reflectors[i].name, "%s", row[1]);
+    syslog(LOG_NOTICE,"Added reflector %i %s",reflectors[i].id,reflectors[i].name);
+    i++;
+  };
+
+  *count = i;
+
+  mysql_free_result(result); // TODO: check that we are relasing in every function
+
+  closeDatabaseMySql(connection);
+};
