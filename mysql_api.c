@@ -115,7 +115,7 @@ CREATE TABLE master\
     echoSlot integer default 1\
 )";
 
-  if (isTableExisting(connection, DATABASE_NAME, "master"))
+  if (isTableExistingMySql(connection, DATABASE_NAME, "master"))
   {
     syslog(LOG_NOTICE, "master already exists");
     return 1;
@@ -138,7 +138,7 @@ CREATE TABLE sMaster\
     sMasterPort VARCHAR(5) default '62010'\
 )";
 
-  if (isTableExisting(connection, DATABASE_NAME, "sMaster"))
+  if (isTableExistingMySql(connection, DATABASE_NAME, "sMaster"))
   {
     syslog(LOG_NOTICE, "sMaster already exists");
     return 1;
@@ -349,7 +349,7 @@ void updateRepeaterStatus(int status, int reflector, int repPos)
   int currentReflector = (status == 2) ? reflector : 0;
   MYSQL *connection = openDatabaseMySql();
   updateRepeaterStatusInternal(connection, reflector, repeaterList[repPos].callsign);
-  closeDatabase(connection);
+  closeDatabaseMySql(connection);
 }
 
 int getCallsignTrafficInfo(MYSQL *connection, int radioId, struct CallsignEntity *callsign)
@@ -409,7 +409,7 @@ void logTraffic(int srcId,int dstId,int slot,unsigned char serviceType[16],char 
     }
   }
 
-  closeDatabase(connection);
+  closeDatabaseMySql(connection);
 }
 
 /*
@@ -466,7 +466,7 @@ void decodeHyteraRrsMySql(struct repeater repeater, unsigned char data[300])
     syslog(LOG_NOTICE,"[%s]Hytera RADIO REGISTER from %i %s",repeater.callsign,srcId,callsign);
   }
 
-  closeDatabase(connection);
+  closeDatabaseMySql(connection);
 }
 
 void deleteRrs(MYSQL *connection, int radioId)
@@ -493,7 +493,7 @@ void decodeHyteraOffRrsMySql(struct repeater repeater, unsigned char data[300])
   }
 
   syslog(LOG_NOTICE,"[%s]Hytera RADIO OFFLINE from %i %s",repeater.callsign,srcId,callsign);
-  closeDatabase(connection);
+  closeDatabaseMySql(connection);
 }
 
 
@@ -763,6 +763,34 @@ int getMasterMySql(CONNECTION_TYPE connection, int *servicePort, int *rdacPort, 
 
   return 0;
 }
+
+int getMasterForTalkGroupsMySql(CONNECTION_TYPE connection, char *repTS1, char *repTS2, char *sMasterTS1, char *sMasterTS2)
+{
+  char SQLQUERY[256];
+  sprintf(SQLQUERY,"SELECT repTS1,repTS2,sMasterTS1,sMasterTS2 FROM master");
+  int retValue = executeCommand(connection, SQLQUERY);
+  if (retValue)
+    return retValue;
+  
+  MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    return 1;
+  };
+  MYSQL_ROW row = mysql_fetch_row(result);
+  if (row == NULL) // error or no rows
+  {
+    return 1;
+  };
+
+  sprintf(repTS1,"%s",row[0]);
+  sprintf(repTS2,"%s",row[1]);
+  sprintf(sMasterTS1,"%s",row[2]);
+  sprintf(sMasterTS2,"%s",row[3]);
+
+  return 0;
+}
+
 
 int getLocalReflectorsMySql(struct reflector *reflectors, int *count)
 {

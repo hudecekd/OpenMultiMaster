@@ -44,9 +44,9 @@ int rdacSock=0;
 int highestRepeater = 0;
 int numReflectors = 0;
 
-sqlite3 *db;
-sqlite3 *openDatabase();
-void closeDatabase();
+//sqlite3 *db;
+//sqlite3 *openDatabase();
+//void closeDatabase();
 
 int setRdacRepeater();
 int findRdacRepeater();
@@ -201,8 +201,8 @@ void serviceListener(port){
 	int redirectPort;
 	int repPos;
 	struct repeater repeaterInfo;
-	sqlite3_stmt *stmt;
-	unsigned char SQLQUERY[200] = {0};
+	//sqlite3_stmt *stmt;
+	//unsigned char SQLQUERY[200] = {0};
 	fd_set fdService;
 	struct timeval timeout;
 	time_t timeNow;
@@ -360,31 +360,31 @@ void serviceListener(port){
 int getMasterInfo(){
 	//Get the needed info from the SQLITE database
 	
-	unsigned char SQLQUERY[200] = {0};
-	sqlite3_stmt *stmt;
+	//unsigned char SQLQUERY[200] = {0};
+	//sqlite3_stmt *stmt;
 	
-	db = openDatabase();
+	//db = openDatabase();
         CONNECTION_TYPE connection = openDatabaseMySql();
         int returnValue = getMasterInfoMySql(connection, &master);
         if (returnValue != 0)
         {
           syslog(LOG_NOTICE,"failed to read sMasterInfo");
-	  sqlite3_finalize(stmt);
-	  closeDatabase(db);
+	  //sqlite3_finalize(stmt);
+	  //closeDatabase(db);
           closeDatabaseMySql(connection);
 	  return 0;
 	}
-	sqlite3_finalize(stmt);
+	//sqlite3_finalize(stmt);
     syslog(LOG_NOTICE,"sMaster info: ownName %s, ownCountryCode %s, ownRegion %s, sMasterIp %s, sMasterPort %s",
 	master.ownName,master.ownCountryCode,master.ownRegion,master.sMasterIp,master.sMasterPort);
 
         returnValue = getMasterMySql(connection, &servicePort, &rdacPort, &dmrPort, &baseDmrPort, &maxRepeaters, &echoId, &rrsGpsId, &aprsUrl, &aprsPort, &echoSlot);
 	
-	sprintf(SQLQUERY,"SELECT servicePort, rdacPort, dmrPort, baseDmrPort, maxRepeaters, echoId,rrsGpsId,aprsUrl,aprsPort,echoSlot FROM master");
+	//sprintf(SQLQUERY,"SELECT servicePort, rdacPort, dmrPort, baseDmrPort, maxRepeaters, echoId,rrsGpsId,aprsUrl,aprsPort,echoSlot FROM master");
         if (returnValue != 0)
         {
 		syslog(LOG_NOTICE,"failed to read masterInfo");
-		closeDatabase(db);
+		//closeDatabase(db);
                 closeDatabaseMySql(connection);
 		return 0;
 	}
@@ -393,16 +393,19 @@ int getMasterInfo(){
 	syslog(LOG_NOTICE,"Assigning APRS server %s port %s",aprsUrl,aprsPort);
 	if (maxRepeaters > 98){
 		syslog(LOG_NOTICE,"maxRepeaters exceeded 98, quiting application");
-		closeDatabase(db);
-		sqlite3_finalize(stmt);
+		//closeDatabase(db);
+		//sqlite3_finalize(stmt);
+                closeDatabaseMySql(connection);
 		return 0;
 	}
-	sqlite3_finalize(stmt);
-	closeDatabase(db);
+	//sqlite3_finalize(stmt);
+	//closeDatabase(db);
+        closeDatabaseMySql(connection);
 	return 1;
 }
 
 
+/*
 void getLocalReflectors(){
         unsigned char SQLQUERY[200] = {0};
         sqlite3_stmt *stmt;
@@ -425,15 +428,16 @@ void getLocalReflectors(){
         sqlite3_finalize(stmt);
 	closeDatabase(db);
 }
+*/
 
 int loadTalkGroups(){
 	//Loading the allowed talkgroups from the SQLITE database
 	
-	unsigned char SQLQUERY[200] = {0};
+	//unsigned char SQLQUERY[200] = {0};
 	char *lineread;
 	int i;
 	int size = 10;
-	sqlite3_stmt *stmt;
+	//sqlite3_stmt *stmt;
 	sMasterTS1List = malloc ((sizeof *sMasterTS1List) * size);
 	sMasterTS2List = malloc ((sizeof *sMasterTS2List) * size);
 	repTS1List = malloc ((sizeof *repTS1List) * size);
@@ -443,15 +447,18 @@ int loadTalkGroups(){
 	unsigned char repTS1[100];
 	unsigned char repTS2[100];
 	
-	db = openDatabase();
-	sprintf(SQLQUERY,"SELECT repTS1,repTS2,sMasterTS1,sMasterTS2 FROM master");
-	if (sqlite3_prepare_v2(db,SQLQUERY,-1,&stmt,0) == 0){
-		if (sqlite3_step(stmt) == SQLITE_ROW){
-			sprintf(tsInfo.repTS1,"%s",sqlite3_column_text(stmt,0));
-			sprintf(tsInfo.repTS2,"%s",sqlite3_column_text(stmt,1));
-			sprintf(tsInfo.sMasterTS1,"%s",sqlite3_column_text(stmt,2));
-			sprintf(tsInfo.sMasterTS2,"%s",sqlite3_column_text(stmt,3));
-			sqlite3_finalize(stmt);
+        CONNECTION_TYPE connection = openDatabaseMySql();
+        int returnValue = getMasterForTalkGroupsMySql(connection, tsInfo.repTS1, tsInfo.repTS2, tsInfo.sMasterTS1, tsInfo.sMasterTS2);
+	//db = openDatabase();
+	//sprintf(SQLQUERY,"SELECT repTS1,repTS2,sMasterTS1,sMasterTS2 FROM master");
+        if (returnValue == 0)
+	/*if (sqlite3_prepare_v2(db,SQLQUERY,-1,&stmt,0) == 0)*/{
+		/*if (sqlite3_step(stmt) == SQLITE_ROW)*/{
+			//sprintf(tsInfo.repTS1,"%s",sqlite3_column_text(stmt,0));
+			//sprintf(tsInfo.repTS2,"%s",sqlite3_column_text(stmt,1));
+			//sprintf(tsInfo.sMasterTS1,"%s",sqlite3_column_text(stmt,2));
+			//sprintf(tsInfo.sMasterTS2,"%s",sqlite3_column_text(stmt,3));
+			//sqlite3_finalize(stmt);
 			memcpy(sMasterTS1,tsInfo.sMasterTS1,sizeof(sMasterTS1));
 			memcpy(sMasterTS2,tsInfo.sMasterTS2,sizeof(sMasterTS2));
 			memcpy(repTS1,tsInfo.repTS1,sizeof(repTS1));
@@ -604,11 +611,13 @@ int loadTalkGroups(){
 				}
 			}
 			else syslog(LOG_NOTICE,"NONE");
-			closeDatabase(db);
+			//closeDatabase(db);
+                        closeDatabaseMySql(connection);
 			return 1;
 		}
 	}
-	closeDatabase(db);
+	//closeDatabase(db);
+        closeDatabaseMySql(connection);
 	syslog(LOG_NOTICE,"Failed to load talkgroups. Is master table populated in database ?");
 	return 0;
 }
@@ -652,7 +661,7 @@ int main(int argc, char**argv)
 	if(!getMasterInfo()) return 0;
 	//Load the allowed talkgroups
 	if(!loadTalkGroups()) return 0;
-	getLocalReflectors();
+	//getLocalReflectors();
         getLocalReflectorsMySql(localReflectors, &numReflectors);
 	//Start sMaster Thread
 	pthread_create(&thread, NULL, sMasterThread,NULL);
