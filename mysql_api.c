@@ -1,8 +1,6 @@
 #include "mysql_api.h"
 #include "master_server.h"
 
-//struct repeater repeaterList[100] = {0};
-
 MYSQL *openDatabaseMySql()
 {
   MYSQL *connection = mysql_init(NULL);
@@ -12,7 +10,7 @@ MYSQL *openDatabaseMySql()
     return NULL;
   }
 
-  if (mysql_real_connect(connection, "localhost", "root", "servis123", NULL, 0, NULL, 0) == NULL)
+  if (mysql_real_connect(connection, serverAddress, userName, password, "DmrMaster", 0, NULL, 0) == NULL)
   {
     syslog(LOG_NOTICE, "Database error: %s", mysql_error(connection));
     return NULL;
@@ -40,7 +38,7 @@ my_bool isFieldExistingMySql(MYSQL *connection, char *db, char *table, char *fie
   if (result == NULL)
   {
     syslog(LOG_NOTICE, "Database error: %s", mysql_error(connection));
-    return 0;
+    return mysql_errno(connection);
   }
 
   my_ulonglong count = mysql_num_rows(result);
@@ -65,7 +63,7 @@ my_bool isTableExistingMySql(MYSQL *connection, char *db, char *table)
   if (result == NULL)
   {
     syslog(LOG_NOTICE, "Database error: %s", mysql_error(connection));
-    return 0;
+    return mysql_errno(connection);;
   }
 
   my_ulonglong count = mysql_num_rows(result);
@@ -80,7 +78,8 @@ int executeCommand(MYSQL *connection, char *SQLQUERY)
   int res = mysql_query(connection, SQLQUERY);
   if (res)
   {
-    syslog(LOG_NOTICE, "executeCommand failed with error %d for query %s", res, SQLQUERY);
+    syslog(LOG_NOTICE, "executeCommand failed with error %d for query %s", mysql_errno(connection), SQLQUERY);
+
   }
 
   my_ulonglong affectedRows = mysql_affected_rows(connection);
@@ -154,7 +153,7 @@ int initRepeatersTable(MYSQL *connection)
   char *format = "\
 CREATE TABLE repeaters\
 (\
-    repeaterId INTEGER default 0 ,\
+    repeaterId INTEGER default 0 PRIMARY KEY ,\
     callsign VARCHAR(10) default '',\
     txFreq VARCHAR(10) default '',\
     shift VARCHAR(7) default '',\
@@ -168,9 +167,9 @@ CREATE TABLE repeaters\
     geoLocation VARCHAR(20) default '',\
     aprsPass VARCHAR(5) default '0000',\
     aprsBeacon VARCHAR(100) default 'DMR repeater',\
-    aprsPHG VARCHHAR(7) default '',\
+    aprsPHG VARCHAR(7) default '',\
     \
-    currentReflector integer default 0\
+    currentReflector integer default 0,\
     autoReflector integer default 0\
 )";
 
@@ -220,7 +219,7 @@ CREATE TABLE rrs\
     registerTime VARCHAR(20) default '1970-01-01 00:00:00',\
     onRepeater VARCHAR(32) default '',\
     \
-    unixTime long default 0\
+    unixTime bigint default 0\
 )";
   sprintf(SQLQUERY, format);
   return executeCommand(connection, SQLQUERY);
@@ -318,7 +317,16 @@ int getCallsign(MYSQL *connection, int radioId, struct CallsignEntity *callsign)
 
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
-    return 1;
+  {
+    syslog(LOG_NOTICE,"Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
+  };
+
+  if (mysql_num_rows(result) != 1)
+  {
+    syslog(LOG_NOTICE, "Wrong row count: %d", mysql_num_rows(result));
+    return UNEXPECTED_ROW_COUNT;
+  }
 
   MYSQL_ROW row = mysql_fetch_row(result);
   sprintf(callsign->callsign, "%s", row[0]);
@@ -362,7 +370,17 @@ int getCallsignTrafficInfo(MYSQL *connection, int radioId, struct CallsignEntity
 
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
-    return 1;
+  {
+    syslog(LOG_NOTICE, "Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
+  }
+
+  if (mysql_num_rows(result) != 1)
+  {
+    syslog(LOG_NOTICE, "Wrong row count: %d", mysql_num_rows(result));
+    return UNEXPECTED_ROW_COUNT;
+  }
+
 
   MYSQL_ROW row = mysql_fetch_row(result);
   sprintf(callsign->callsign, "%s", row[0]);
@@ -544,6 +562,12 @@ int updateRepeaterList(CONNECTION_TYPE connection)
   executeCommand(connection, SQLQUERY);
   
   MYSQL_RES *result = mysql_store_result(connection);
+  if (result == NULL)
+  {
+    syslog(LOG_NOTICE, "Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
+  }
+
   MYSQL_ROW row = mysql_fetch_row(result);
   struct repeater *repeater;
 
@@ -582,11 +606,15 @@ int updateRepeaterList(CONNECTION_TYPE connection)
     }
   }
 
+  mysql_free_result(result);
+
   if (id != 0) // repeater was found => we can update it
   {
     sprintf(SQLQUERY,"UPDATE repeaters SET upDated = 0");
     executeCommand(connection, SQLQUERY);
   };
+
+  return 0; // success?
 }
 
 int getRepeaterForIpAddress(CONNECTION_TYPE connection, struct repeater *repeater, char *ipAddress)
@@ -600,13 +628,17 @@ int getRepeaterForIpAddress(CONNECTION_TYPE connection, struct repeater *repeate
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
   {
-    return 1;
+    syslog(LOG_NOTICE,"Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);;
   };
-  MYSQL_ROW row = mysql_fetch_row(result);
-  if (row == NULL) // error or no rows
+
+  if (mysql_num_rows(result) != 1)
   {
-    return 1;
-  };
+    syslog(LOG_NOTICE, "Wrong row count: %d", mysql_num_rows(result));
+    return UNEXPECTED_ROW_COUNT;
+  }
+
+  MYSQL_ROW row = mysql_fetch_row(result);
 
   repeater->id = atoi(row[0]);
   sprintf(repeater->callsign,"%s", row[1]);
@@ -635,13 +667,17 @@ int getRepeaterForId(CONNECTION_TYPE connection, struct repeater *repeater, int 
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
   {
-    return 1;
+    syslog(LOG_NOTICE, "Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);;
   };
-  MYSQL_ROW row = mysql_fetch_row(result);
-  if (row == NULL) // error or no rows
+
+  if (mysql_num_rows(result) != 1)
   {
-    return 1;
-  };
+    syslog(LOG_NOTICE, "Wrong row count: %d", mysql_num_rows(result));
+    return UNEXPECTED_ROW_COUNT;
+  }
+ 
+  MYSQL_ROW row = mysql_fetch_row(result);
 
   repeater->id = atoi(row[0]);
   sprintf(repeater->callsign,"%s", row[1]);
@@ -656,6 +692,9 @@ int getRepeaterForId(CONNECTION_TYPE connection, struct repeater *repeater, int 
   sprintf(repeater->aprsBeacon,"%s",row[10]);
   sprintf(repeater->aprsPHG,"%s",row[11]);
   repeater->autoReflector = atoi(row[12]);
+
+  mysql_free_result(result);
+
   return 0;
 }
 
@@ -671,22 +710,11 @@ int existsRepeater(CONNECTION_TYPE connection, int *pExists, int id)
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
   {
-    return 1;
-  };
-  MYSQL_ROW row = mysql_fetch_row(result);
-  if (row == NULL) // error or no rows
-  {
-    unsigned int error = mysql_errno(connection);
-    if (error == 0) // no row
-    {
-      *pExists = 0;
-      return 0;
-    };
-
-    return 1;
+    syslog(LOG_NOTICE,"Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
   };
 
-  *pExists = 1;
+  *pExists = (mysql_num_rows(result) == 1);
   return 0;
 }
 
@@ -711,13 +739,17 @@ int getMasterInfoMySql(CONNECTION_TYPE connection, struct masterInfo *master)
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
   {
-    return 1;
+    syslog(LOG_NOTICE,"Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
   };
-  MYSQL_ROW row = mysql_fetch_row(result);
-  if (row == NULL) // error or no rows
+
+  if (mysql_num_rows(result) != 1)
   {
-    return 1;
-  };
+    syslog(LOG_NOTICE, "Wrong row count: %d", mysql_num_rows(result));
+    return UNEXPECTED_ROW_COUNT;
+  }
+ 
+  MYSQL_ROW row = mysql_fetch_row(result);
 
   sprintf(master->ownName,"%s",row[0]);
   sprintf(master->ownCountryCode,"%s", row[1]);
@@ -726,6 +758,8 @@ int getMasterInfoMySql(CONNECTION_TYPE connection, struct masterInfo *master)
   sprintf(master->sMasterPort,"%s", row[4]);
   master->ownCCInt = atoi(row[1]);
   master->ownRegionInt = atoi(row[2]);
+
+  mysql_free_result(result);
 
   return 0;
 }
@@ -742,13 +776,17 @@ int getMasterMySql(CONNECTION_TYPE connection, int *servicePort, int *rdacPort, 
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
   {
-    return 1;
+    syslog(LOG_NOTICE,"Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
   };
-  MYSQL_ROW row = mysql_fetch_row(result);
-  if (row == NULL) // error or no rows
+
+  if (mysql_num_rows(result) != 1)
   {
-    return 1;
-  };
+    syslog(LOG_NOTICE, "Wrong row count: %d", mysql_num_rows(result));
+    return UNEXPECTED_ROW_COUNT;
+  }
+
+  MYSQL_ROW row = mysql_fetch_row(result);
 
   *servicePort = atoi(row[0]);
   *rdacPort = atoi(row[1]);
@@ -760,6 +798,8 @@ int getMasterMySql(CONNECTION_TYPE connection, int *servicePort, int *rdacPort, 
   sprintf(aprsUrl,"%s",row[7]);
   sprintf(aprsPort,"%s",row[8]);
   *echoSlot = atoi(row[9]);
+
+  mysql_free_result(result);
 
   return 0;
 }
@@ -775,18 +815,24 @@ int getMasterForTalkGroupsMySql(CONNECTION_TYPE connection, char *repTS1, char *
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
   {
-    return 1;
+    syslog(LOG_NOTICE,"Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
   };
-  MYSQL_ROW row = mysql_fetch_row(result);
-  if (row == NULL) // error or no rows
+
+  if (mysql_num_rows(result) != 1)
   {
-    return 1;
-  };
+    syslog(LOG_NOTICE, "Wrong row count: %d", mysql_num_rows(result));
+    return UNEXPECTED_ROW_COUNT;
+  }
+ 
+  MYSQL_ROW row = mysql_fetch_row(result);
 
   sprintf(repTS1,"%s",row[0]);
   sprintf(repTS2,"%s",row[1]);
   sprintf(sMasterTS1,"%s",row[2]);
   sprintf(sMasterTS2,"%s",row[3]);
+
+  mysql_free_result(result);
 
   return 0;
 }
@@ -805,7 +851,8 @@ int getLocalReflectorsMySql(struct reflector *reflectors, int *count)
   MYSQL_RES *result = mysql_store_result(connection);
   if (result == NULL)
   {
-    return 1;
+    syslog(LOG_NOTICE,"Database error: %s", mysql_error(connection));
+    return mysql_errno(connection);
   };
 
   MYSQL_ROW row;
@@ -820,7 +867,7 @@ int getLocalReflectorsMySql(struct reflector *reflectors, int *count)
 
   *count = i;
 
-  mysql_free_result(result); // TODO: check that we are relasing in every function
+  mysql_free_result(result);
 
   closeDatabaseMySql(connection);
 };

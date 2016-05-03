@@ -19,6 +19,12 @@
 #define CONNECTION_TYPE MYSQL *
 #define ROW_TYPE MYSQL_ROW
 
+char serverAddress[128];
+char userName[128];
+char password[128];
+
+#define UNEXPECTED_ROW_COUNT 1
+
 struct RepeaterEntity
 {
   int repeaterId;

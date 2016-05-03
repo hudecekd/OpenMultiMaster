@@ -625,7 +625,12 @@ int loadTalkGroups(){
 
 int main(int argc, char**argv)
 {
-	
+  if (argc != 4)
+  {
+    printf("server address, userName and password expected\n");
+    return 1;
+  }
+
 	int pid;
 	pid = fork();
 	if (pid == 0){
@@ -633,6 +638,11 @@ int main(int argc, char**argv)
 		execv("./webGui",argv);
 		exit(127);
 	}
+
+        // initialize connection settings
+        sprintf(serverAddress, argv[1]);
+        sprintf(userName, argv[2]);
+        sprintf(password, argv[3]);
     
 	setlogmask (LOG_UPTO (LOG_NOTICE));
 	openlog("Master-server", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
@@ -642,14 +652,21 @@ int main(int argc, char**argv)
 	int dbInit;
 	int i;
 
+        syslog(LOG_NOTICE, "Server address: %s", argv[1]);
+        syslog(LOG_NOTICE, "userName: %s", argv[2]);
+        syslog(LOG_NOTICE, "password: %s", argv[3]);
+
         CONNECTION_TYPE connection = openDatabaseMySql();
+        if (connection == NULL)
+          exit(1);
+
         int creationFailed = initDatabaseMySql(connection);
         closeDatabaseMySql(connection);
 
         if (creationFailed)
         {
           syslog(LOG_NOTICE, "Failed to init database");
-          return 0;
+          exit(1);
         }
 	
 	//Start scheduler thread
