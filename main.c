@@ -663,7 +663,7 @@ int main(int argc, char**argv)
         int creationFailed = initDatabaseMySql(connection);
         closeDatabaseMySql(connection);
 
-        if (creationFailed)
+        if (!creationFailed)
         {
           syslog(LOG_NOTICE, "Failed to init database");
           exit(1);

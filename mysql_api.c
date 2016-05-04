@@ -79,7 +79,7 @@ int executeCommand(MYSQL *connection, char *SQLQUERY)
   if (res)
   {
     syslog(LOG_NOTICE, "executeCommand failed with error %d for query %s", mysql_errno(connection), SQLQUERY);
-
+    return mysql_errno(connection);
   }
 
   my_ulonglong affectedRows = mysql_affected_rows(connection);
@@ -117,10 +117,22 @@ CREATE TABLE master\
   if (isTableExistingMySql(connection, DATABASE_NAME, "master"))
   {
     syslog(LOG_NOTICE, "master already exists");
-    return 1;
+    return 0;
   }
 
   sprintf(SQLQUERY, format);
+  int result = executeCommand(connection, SQLQUERY);
+  if (result == 0)
+  {
+    return initializeMasterRecord(connection);
+  };
+  return result;
+}
+
+int initializeMasterRecord(MYSQL *connection)
+{
+  char SQLQUERY[128];
+  sprintf(SQLQUERY,"INSERT INTO master (repTS1) VALUES ('')");
   return executeCommand(connection, SQLQUERY);
 }
 
@@ -140,12 +152,24 @@ CREATE TABLE sMaster\
   if (isTableExistingMySql(connection, DATABASE_NAME, "sMaster"))
   {
     syslog(LOG_NOTICE, "sMaster already exists");
-    return 1;
+    return 0;
   }
 
   sprintf(SQLQUERY, format);
-  return executeCommand(connection, SQLQUERY);
+  int result = executeCommand(connection, SQLQUERY);
+  if (result == 0)
+  {
+    return initializeSMasterRecord(connection);
+  };
+  return result;
 }
+
+int initializeSMasterRecord(MYSQL *connection)
+{
+  char SQLQUERY[128];
+  sprintf(SQLQUERY,"INSERT INTO sMaster (ownName) VALUES ('')");
+  return executeCommand(connection, SQLQUERY);
+};
 
 int initRepeatersTable(MYSQL *connection)
 {
@@ -170,8 +194,16 @@ CREATE TABLE repeaters\
     aprsPHG VARCHAR(7) default '',\
     \
     currentReflector integer default 0,\
-    autoReflector integer default 0\
+    autoReflector integer default 0,\
+    \
+    upDated BIT default 0\
 )";
+
+  if (isTableExistingMySql(connection, DATABASE_NAME, "repeaters"))
+  {
+    syslog(LOG_NOTICE, "repeaters already exists");
+    return 0;
+  }
 
   sprintf(SQLQUERY, format);
   return executeCommand(connection, SQLQUERY);
@@ -203,6 +235,13 @@ CREATE TABLE callsigns\
     homeRepeaterId VARCHAR(32) default '',\
     remarks VARCHAR(32) default ''\
 )";
+
+  if (isTableExistingMySql(connection, DATABASE_NAME, "callsigns"))
+  {
+    syslog(LOG_NOTICE, "callsigns already exists");
+    return 0;
+  }
+
   sprintf(SQLQUERY, format);
   return executeCommand(connection, SQLQUERY);
 }
@@ -221,6 +260,13 @@ CREATE TABLE rrs\
     \
     unixTime bigint default 0\
 )";
+
+  if (isTableExistingMySql(connection, DATABASE_NAME, "rrs"))
+  {
+    syslog(LOG_NOTICE, "rrs already exists");
+    return 0;
+  }
+
   sprintf(SQLQUERY, format);
   return executeCommand(connection, SQLQUERY);
 }
@@ -242,6 +288,14 @@ CREATE TABLE traffic\
     onRepeater varchar(32) default '',\
     senderName varchar(32) default ''\
 )";
+
+  if (isTableExistingMySql(connection, DATABASE_NAME, "traffic"))
+  {
+    syslog(LOG_NOTICE, "traffic already exists");
+    return 0;
+  }
+
+ 
   sprintf(SQLQUERY, format);
   return executeCommand(connection, SQLQUERY);
 }
@@ -263,6 +317,14 @@ CREATE TABLE voiceTraffic\
     onRepeater varchar(32) default '', \
     senderName varchar(32) default ''\
 )";
+
+  if (isTableExistingMySql(connection, DATABASE_NAME, "voiceTraffic"))
+  {
+    syslog(LOG_NOTICE, "voiceTraffic already exists");
+    return 0;
+  }
+
+ 
   sprintf(SQLQUERY, format);
   return executeCommand(connection, SQLQUERY);
 }
@@ -276,6 +338,14 @@ CREATE TABLE localReflectors\
     id int primary key,\
     name varchar(50)\
 )";
+
+  if (isTableExistingMySql(connection, DATABASE_NAME, "localReflectors"))
+  {
+    syslog(LOG_NOTICE, "localReflectors already exists");
+    return 0;
+  }
+
+
   sprintf(SQLQUERY, format);
   return executeCommand(connection, SQLQUERY);
 }
@@ -283,21 +353,23 @@ CREATE TABLE localReflectors\
 int initDatabaseMySql(MYSQL *connection)
 {
   if (initCallsignsTable(connection))
-    return 1;
+    return 0;
   if (initMasterTable(connection))
-    return 1;
+    return 0;
   if (initSMasterTable(connection))
-    return 1;
+    return 0;
   if (initRepeatersTable(connection))
-    return 1;
+    return 0;
   if (initRrsTable(connection))
-    return 1;
+    return 0;
   if (initTrafficTable(connection))
-    return 1;
+    return 0;
   if (initVoiceTraffic(connection))
-    return 1;
+    return 0;
   if (initLocalReflectors(connection))
-    return 1;
+    return 0;
+
+  return 1;
 }
 
 int updateCallsignsAprsTime(MYSQL *connection, int radioId)
@@ -566,6 +638,12 @@ int updateRepeaterList(CONNECTION_TYPE connection)
   {
     syslog(LOG_NOTICE, "Database error: %s", mysql_error(connection));
     return mysql_errno(connection);
+  }
+
+  if (mysql_num_rows(result) == 0)
+  {
+    syslog(LOG_NOTICE, "No updated repeater");
+    return UNEXPECTED_ROW_COUNT;
   }
 
   MYSQL_ROW row = mysql_fetch_row(result);
