@@ -227,7 +227,7 @@ bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg, CONNEC
 						rdacList[repPos].id = buffer[20] << 16 | buffer[19] << 8 | buffer[18];
 						syslog(LOG_NOTICE,"Assigning id %i to repeater on RDAC pos %i [%s]",rdacList[repPos].id,repPos,str);
                                                 int exists;
-                                                if (existsRepeater(connection, &exists, rdacList[repPos].id))
+                                                if (existsRepeater(connection, &exists, rdacList[repPos].id) == 0 && (!exists)) // operation successfull but repeater not found
                                                 {
 								syslog(LOG_NOTICE,"Repeater with id %i not known in database, removing from list pos %i [%s]",rdacList[repPos].id,repPos,str);
 								delRdacRepeater(cliaddrOrg);
@@ -235,6 +235,7 @@ bool getRepeaterInfo(int sockfd,int repPos,struct sockaddr_in cliaddrOrg, CONNEC
 								syslog(LOG_NOTICE,"Setting repeater in discard list [%s]",str);
 								discard(cliaddrOrg);
 								close(sockfd);
+                                                                closeDatabaseMySql(connection);
 								pthread_exit(NULL);
 						}
 						break;

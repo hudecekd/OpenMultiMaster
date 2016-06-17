@@ -654,7 +654,8 @@ int updateRepeaterList(CONNECTION_TYPE connection)
   int i;
   for(i=0;i<highestRepeater;i++)
   {
-    if(repeaterList[i].id == id && repeaterList[i].dmrOnline)
+    repeater = repeaterList + i;
+    if(repeater->id == id && repeater->dmrOnline)
     {
       sprintf(repeater->callsign,"%s", row[1]);
       sprintf(repeater->txFreq,"%s", row[2]);
@@ -674,12 +675,12 @@ int updateRepeaterList(CONNECTION_TYPE connection)
           repeater->geoLocation, repeater->aprsPass, repeater->aprsBeacon,
           repeater->aprsPHG, repeater->autoReflector, i);
       
-      repeaterList[i].conference[2] = repeaterList[i].autoReflector;
+      repeater->conference[2] = repeater->autoReflector;
 
-      if (repeaterList[i].pearRepeater[2] != 0)
+      if (repeater->pearRepeater[2] != 0)
       {
-        repeaterList[i].pearRepeater[2] = 0;
-        repeaterList[repeaterList[i].pearPos[2]].pearRepeater[2] = 0;
+        repeater->pearRepeater[2] = 0;
+        repeaterList[repeater->pearPos[2]].pearRepeater[2] = 0;
       }
     }
   }
@@ -948,4 +949,6 @@ int getLocalReflectorsMySql(struct reflector *reflectors, int *count)
   mysql_free_result(result);
 
   closeDatabaseMySql(connection);
+
+  return 0;
 };
